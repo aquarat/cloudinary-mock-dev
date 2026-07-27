@@ -1,0 +1,14 @@
+services:
+  cloudinary-clone:
+    build: .
+    ports:
+      - "33000:3000"
+    volumes:
+      - cloudinary-data:/data
+    environment:
+      # CLOUDINARY_CLOUD_NAME: a-name
+      # CLOUDINARY_API_KEY: "1234567896999"
+      # CLOUDINARY_API_SECRET: sdfghsuifvhguksdghfviudv
+
+volumes:
+  cloudinary-data:
