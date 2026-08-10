@@ -34,7 +34,12 @@ const MAX_REDIRECTS = 5;
 // runtime and so it never silently disables the guard for anything else.
 function allowedHosts(): Set<string> {
   const raw = process.env["SSRF_ALLOWED_HOSTS"] ?? "";
-  return new Set(raw.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean));
+  return new Set(
+    raw
+      .split(",")
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
+  );
 }
 
 // Returns true when `ip` (a numeric address literal, v4 or v6) points at a
@@ -99,15 +104,12 @@ function ipv6Groups(address: string): number[] | null {
   const halves = text.split("::");
   if (halves.length > 2) return null;
 
-  const parse = (part: string): number[] =>
-    part === "" ? [] : part.split(":").map((h) => Number.parseInt(h, 16));
+  const parse = (part: string): number[] => (part === "" ? [] : part.split(":").map((h) => Number.parseInt(h, 16)));
   const left = parse(halves[0] ?? "");
   const right = halves.length === 2 ? parse(halves[1] ?? "") : [];
 
   const groups =
-    halves.length === 2
-      ? [...left, ...new Array(Math.max(0, 8 - left.length - right.length)).fill(0), ...right]
-      : left;
+    halves.length === 2 ? [...left, ...new Array(Math.max(0, 8 - left.length - right.length)).fill(0), ...right] : left;
 
   if (groups.length !== 8 || groups.some((g) => Number.isNaN(g) || g < 0 || g > 0xffff)) return null;
   return groups;
@@ -217,9 +219,7 @@ async function fetchRemote(initialUrl: string): Promise<ResolvedFile> {
     }
 
     if (!response.ok) {
-      throw new Error(
-        `Failed to fetch remote file ${initialUrl}: ${response.status} ${response.statusText}`,
-      );
+      throw new Error(`Failed to fetch remote file ${initialUrl}: ${response.status} ${response.statusText}`);
     }
 
     // Trust-but-verify the advertised length before reading anything.

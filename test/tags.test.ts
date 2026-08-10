@@ -38,10 +38,7 @@ describe("tags route — Ruby gem wire format", () => {
   test("accepts remove_all with bracketed public_ids[] fields signed under the bare key", async () => {
     const timestamp = Math.floor(Date.now() / 1000);
     const publicIds = ["gallery/asset-one", "gallery/asset-two"];
-    const signature = signParams(
-      { command: "remove_all", public_ids: publicIds, timestamp },
-      config.apiSecret,
-    );
+    const signature = signParams({ command: "remove_all", public_ids: publicIds, timestamp }, config.apiSecret);
 
     const form = new FormData();
     form.append("command", "remove_all");

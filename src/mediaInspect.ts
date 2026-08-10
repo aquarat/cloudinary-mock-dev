@@ -23,7 +23,7 @@ const EXT_FROM_MIME: Record<string, string> = {
 function extFromFilename(name: string | null): string | null {
   if (!name) return null;
   const match = name.match(/\.([a-zA-Z0-9]+)$/);
-  return match ? (match[1] ?? null)?.toLowerCase() ?? null : null;
+  return match ? ((match[1] ?? null)?.toLowerCase() ?? null) : null;
 }
 
 export function inspectMedia(params: {

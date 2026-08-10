@@ -77,7 +77,9 @@ export function createUploadRoute(config: Config, store: AssetStore): Hono {
     }
 
     const resourceType: ResourceType =
-      requestedResourceType === "auto" ? detectResourceType(resolved.contentType) : (requestedResourceType as ResourceType);
+      requestedResourceType === "auto"
+        ? detectResourceType(resolved.contentType)
+        : (requestedResourceType as ResourceType);
     const type: DeliveryType = (stringParam(params, "type") as DeliveryType | undefined) ?? "upload";
     const folder = stringParam(params, "folder");
     const requestedPublicId = stringParam(params, "public_id");

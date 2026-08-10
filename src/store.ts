@@ -3,6 +3,74 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AssetRecord, DeliveryType, ResourceType } from "./types";
 
+/** Logical sort keys exposed to callers (the admin UI's clickable columns). */
+export type AssetSortKey = "name" | "size" | "date";
+export type SortOrder = "asc" | "desc";
+
+/**
+ * Allowlist mapping a caller-supplied sort key to a real column. Sort keys and
+ * directions are never interpolated from user input — only values looked up
+ * here reach the SQL string, everything else is bound as a parameter.
+ */
+const SORT_COLUMNS: Record<AssetSortKey, string> = {
+  name: "public_id",
+  size: "bytes",
+  date: "created_at",
+};
+
+/** The primary-key triple identifying one stored asset. */
+export interface AssetIdentity {
+  resourceType: ResourceType;
+  type: DeliveryType;
+  publicId: string;
+}
+
+/**
+ * Ceiling on rows per listing request. Generous because the admin UI lets an
+ * operator ask for very large pages deliberately; the cost of rendering those
+ * is the browser's problem, not a reason to silently return fewer rows than
+ * were asked for.
+ */
+export const MAX_LIST_LIMIT = 5000;
+
+export interface ListAssetsOptions {
+  sort?: string | undefined;
+  order?: string | undefined;
+  /** Max rows to return. Clamped to 1..MAX_LIST_LIMIT; defaults to 100. */
+  limit?: number | undefined;
+  offset?: number | undefined;
+  /** Case-insensitive substring match against public_id and tags. */
+  filter?: string | undefined;
+}
+
+export interface ListAssetsResult {
+  items: AssetRecord[];
+  /** Total rows matching the filter, ignoring limit/offset. */
+  total: number;
+  limit: number;
+  offset: number;
+  sort: AssetSortKey;
+  order: SortOrder;
+}
+
+function normaliseSort(sort: string | undefined): AssetSortKey {
+  return sort === "name" || sort === "size" || sort === "date" ? sort : "date";
+}
+
+function normaliseOrder(order: string | undefined): SortOrder {
+  return order === "asc" ? "asc" : "desc";
+}
+
+function clampInt(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+/** LIKE treats %/_ as wildcards, so escape them (plus the escape char itself). */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
 export class AssetStore {
   private readonly db: Database;
 
@@ -83,12 +151,8 @@ export class AssetStore {
 
   find(resourceType: ResourceType, type: DeliveryType, publicId: string): AssetRecord | undefined {
     const row = this.db
-      .query(
-        `SELECT * FROM assets WHERE resource_type = $resourceType AND type = $type AND public_id = $publicId`,
-      )
-      .get({ $resourceType: resourceType, $type: type, $publicId: publicId }) as
-      | Record<string, unknown>
-      | null;
+      .query(`SELECT * FROM assets WHERE resource_type = $resourceType AND type = $type AND public_id = $publicId`)
+      .get({ $resourceType: resourceType, $type: type, $publicId: publicId }) as Record<string, unknown> | null;
     return row ? rowToRecord(row) : undefined;
   }
 
@@ -103,11 +167,45 @@ export class AssetStore {
     return row ? rowToRecord(row) : undefined;
   }
 
+  /**
+   * Paginated, sorted listing for the admin UI. Sorting and filtering happen in
+   * SQL so large datasets aren't pulled into memory; the sort column/direction
+   * come from a fixed allowlist and the filter is bound as a parameter, so no
+   * caller input is ever concatenated into the statement.
+   */
+  list(options: ListAssetsOptions = {}): ListAssetsResult {
+    const sort = normaliseSort(options.sort);
+    const order = normaliseOrder(options.order);
+    const limit = clampInt(options.limit, 100, 1, MAX_LIST_LIMIT);
+    const offset = clampInt(options.offset, 0, 0, Number.MAX_SAFE_INTEGER);
+
+    const filter = options.filter?.trim();
+    const where = filter ? `WHERE public_id LIKE $filter ESCAPE '\\' OR tags LIKE $filter ESCAPE '\\'` : "";
+    const filterParams: Record<string, string> = filter ? { $filter: `%${escapeLike(filter)}%` } : {};
+
+    const column = SORT_COLUMNS[sort];
+    const direction = order === "asc" ? "ASC" : "DESC";
+
+    const { total } = this.db.query(`SELECT COUNT(*) AS total FROM assets ${where}`).get(filterParams) as {
+      total: number;
+    };
+
+    const params: Record<string, string | number> = { ...filterParams, $limit: limit, $offset: offset };
+    // public_id is the tiebreaker so equal sizes/timestamps paginate stably.
+    const rows = this.db
+      .query(
+        `SELECT * FROM assets ${where}
+         ORDER BY ${column} ${direction}, public_id ASC
+         LIMIT $limit OFFSET $offset`,
+      )
+      .all(params) as Record<string, unknown>[];
+
+    return { items: rows.map(rowToRecord), total, limit, offset, sort, order };
+  }
+
   setTags(resourceType: ResourceType, publicId: string, tags: string[]): AssetRecord | undefined {
     this.db
-      .query(
-        `UPDATE assets SET tags = $tags WHERE resource_type = $resourceType AND public_id = $publicId`,
-      )
+      .query(`UPDATE assets SET tags = $tags WHERE resource_type = $resourceType AND public_id = $publicId`)
       .run({ $tags: JSON.stringify(tags), $resourceType: resourceType, $publicId: publicId });
     return this.findByPublicIdAnyType(resourceType, publicId);
   }
@@ -118,8 +216,52 @@ export class AssetStore {
     this.db
       .query(`DELETE FROM assets WHERE resource_type = $resourceType AND type = $type AND public_id = $publicId`)
       .run({ $resourceType: resourceType, $type: type, $publicId: publicId });
-    await Bun.file(this.blobPath(record.storageKey)).delete().catch(() => {});
+    await Bun.file(this.blobPath(record.storageKey))
+      .delete()
+      .catch(() => {});
     return true;
+  }
+
+  /** Removes the rows and their blobs for an explicit set of identities. Returns how many existed and were deleted. */
+  async destroyMany(items: AssetIdentity[]): Promise<number> {
+    let deleted = 0;
+    for (const item of items) {
+      if (await this.destroy(item.resourceType, item.type, item.publicId)) deleted += 1;
+    }
+    return deleted;
+  }
+
+  /**
+   * Deletes up to `limit` assets matching the same filter `list` uses, and
+   * reports how many still match afterwards. Deleting in bounded batches keeps a
+   * "delete everything matching" operation from building one enormous statement
+   * (or one enormous transaction) over a table with tens of thousands of rows —
+   * the caller loops until `remaining` reaches zero.
+   */
+  async destroyMatching(filter: string | undefined, limit = 500): Promise<{ deleted: number; remaining: number }> {
+    const batch = clampInt(limit, 500, 1, 1000);
+    const trimmed = filter?.trim();
+    const where = trimmed ? `WHERE public_id LIKE $filter ESCAPE '\\' OR tags LIKE $filter ESCAPE '\\'` : "";
+    const filterParams: Record<string, string> = trimmed ? { $filter: `%${escapeLike(trimmed)}%` } : {};
+
+    const rows = this.db
+      .query(`SELECT * FROM assets ${where} ORDER BY public_id ASC LIMIT $limit`)
+      .all({ ...filterParams, $limit: batch }) as Record<string, unknown>[];
+
+    const records = rows.map(rowToRecord);
+    const deleted = await this.destroyMany(
+      records.map((record) => ({
+        resourceType: record.resourceType,
+        type: record.type,
+        publicId: record.publicId,
+      })),
+    );
+
+    const { total } = this.db.query(`SELECT COUNT(*) AS total FROM assets ${where}`).get(filterParams) as {
+      total: number;
+    };
+
+    return { deleted, remaining: total };
   }
 }
 

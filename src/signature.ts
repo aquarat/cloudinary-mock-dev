@@ -24,13 +24,11 @@ function toSignString(params: SignableParams): string {
 }
 
 /** Matches `Cloudinary::Utils.sign_request` / the JS SDK's `api_sign_request`. */
-export function signParams(
-  params: SignableParams,
-  apiSecret: string,
-  algorithm: "sha1" | "sha256" = "sha1",
-): string {
+export function signParams(params: SignableParams, apiSecret: string, algorithm: "sha1" | "sha256" = "sha1"): string {
   const toSign = toSignString(params);
-  return createHash(algorithm).update(toSign + apiSecret).digest("hex");
+  return createHash(algorithm)
+    .update(toSign + apiSecret)
+    .digest("hex");
 }
 
 /**
@@ -38,11 +36,7 @@ export function signParams(
  * signatures depending on version/config. Accepting either keeps this server
  * agnostic to exactly which the calling Ruby/JS SDK build produced.
  */
-export function verifySignature(
-  params: SignableParams,
-  providedSignature: string,
-  apiSecret: string,
-): boolean {
+export function verifySignature(params: SignableParams, providedSignature: string, apiSecret: string): boolean {
   const sha1 = signParams(params, apiSecret, "sha1");
   const sha256 = signParams(params, apiSecret, "sha256");
   // Compare in constant time so the number of matching characters can't be

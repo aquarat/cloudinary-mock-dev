@@ -30,7 +30,13 @@ export function createTagsRoute(config: Config, store: AssetStore): Hono {
   app.post("/v1_1/:cloudName/:resourceType{image|video|raw}/tags", async (c) => {
     const { cloudName, resourceType } = c.req.param();
     const authFailed = (reason: string, apiKey?: string) => {
-      log.warn("auth_failed", { req_id: getRequestId(c), reason, ip: clientIp(c), cloud_name: cloudName, api_key: apiKey });
+      log.warn("auth_failed", {
+        req_id: getRequestId(c),
+        reason,
+        ip: clientIp(c),
+        cloud_name: cloudName,
+        api_key: apiKey,
+      });
     };
 
     if (cloudName !== config.cloudName) {

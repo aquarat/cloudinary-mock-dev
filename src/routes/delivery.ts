@@ -27,8 +27,7 @@ const INLINE_SAFE_MIME = new Set<string>([
 // tokens plus `script-src 'none'` stops SVG (or any HTML) from running scripts,
 // while `img-src` still lets a genuine image render. `style-src 'unsafe-inline'`
 // keeps inline presentation working for image documents.
-const DELIVERY_CSP =
-  "default-src 'none'; script-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox";
+const DELIVERY_CSP = "default-src 'none'; script-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox";
 
 // Strips path separators, quotes and control characters so the value is safe to
 // embed in a Content-Disposition header. Falls back to a generic name.

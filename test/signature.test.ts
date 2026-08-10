@@ -4,9 +4,7 @@ import { signParams, verifySignature } from "../src/signature";
 
 describe("signParams", () => {
   test("matches a hand-built sha1(sorted `key=value&...` + secret) digest", () => {
-    const expected = createHash("sha1")
-      .update("public_id=sample&timestamp=1315060820abcd")
-      .digest("hex");
+    const expected = createHash("sha1").update("public_id=sample&timestamp=1315060820abcd").digest("hex");
     const signature = signParams({ public_id: "sample", timestamp: 1315060820 }, "abcd", "sha1");
     expect(signature).toBe(expected);
   });

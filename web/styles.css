@@ -1,0 +1,323 @@
+/* Self-contained styling: no framework, no webfont, nothing loaded off-origin,
+   so the admin page works under a strict CSP on an air-gapped host. */
+
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --border: #d9dde3;
+  --text: #1d2430;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --danger: #b91c1c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    14px / 1.45 system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 12px;
+}
+
+.error {
+  color: var(--danger);
+  margin: 8px 0;
+}
+
+button {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: #f0c7c7;
+}
+
+input {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+/* Login */
+
+.login-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 10vh 16px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+}
+
+.login {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login p {
+  margin: 0 0 12px;
+}
+
+.login label {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.login button {
+  margin-top: 16px;
+}
+
+/* App shell */
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.app header,
+.app footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.app footer {
+  margin-top: 16px;
+}
+
+.header-actions,
+.pager {
+  display: flex;
+  gap: 8px;
+}
+
+/* Table */
+
+table.assets {
+  width: 100%;
+  margin-top: 16px;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+table.assets th,
+table.assets td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+table.assets th {
+  background: #eef1f5;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+table.assets tr:last-child td {
+  border-bottom: none;
+}
+
+td.empty {
+  text-align: center;
+  padding: 32px;
+}
+
+td.id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
+  max-width: 320px;
+}
+
+td.actions {
+  white-space: nowrap;
+  display: flex;
+  gap: 6px;
+}
+
+button.sort {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+button.sort.active {
+  color: var(--accent);
+}
+
+/* Preview */
+
+.thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: repeating-conic-gradient(#e9ecf1 0% 25%, #ffffff 0% 50%) 50% / 12px 12px;
+}
+
+.thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.thumb.placeholder span {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+}
+
+/* Tags */
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag {
+  background: #eef2ff;
+  color: #3730a3;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+/* Bulk-selection toolbar. Sticks to the top so the action stays reachable while
+   scrolling a long page of results. */
+.selection-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #eef4ff;
+  border: 1px solid #c7d9ff;
+  border-radius: 6px;
+}
+
+.selection-bar .count {
+  font-weight: 600;
+}
+
+.selection-bar .escalate {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+
+.selection-bar .escalate.warn {
+  color: var(--danger);
+}
+
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+button.link:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.assets th.select,
+.assets td.select {
+  width: 32px;
+  text-align: center;
+}
+
+.assets tr.selected {
+  background: #eef4ff;
+}
+
+/* Rows-per-page control, between the count and the pager in the footer. */
+.page-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.page-size select {
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+}

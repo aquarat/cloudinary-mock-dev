@@ -6,6 +6,14 @@ export interface Config {
   apiSecret: string;
   /** Overrides the host used when building asset URLs; falls back to the incoming request's Host header. */
   publicBaseUrl: string | undefined;
+  // The admin fields are optional so a Config literal without them (the common
+  // case, and what most tests build) is still valid — omitted means disabled.
+  /** Admin UI username. The admin UI only exists when this AND `adminPassword` are set. */
+  adminUsername?: string | undefined;
+  /** Admin UI password. The admin UI only exists when this AND `adminUsername` are set. */
+  adminPassword?: string | undefined;
+  /** HMAC secret for admin session tokens. When unset a random one is generated per boot (sessions die on restart). */
+  adminJwtSecret?: string | undefined;
 }
 
 /**
@@ -23,6 +31,12 @@ function env(name: string, fallback: string): string {
   return value && value.trim() !== "" ? value : fallback;
 }
 
+/** Like `env`, but with no fallback: blank/whitespace-only values read as "not set". */
+function optionalEnv(name: string): string | undefined {
+  const value = process.env[name];
+  return value && value.trim() !== "" ? value : undefined;
+}
+
 export function loadConfig(): Config {
   return {
     port: Number(env("PORT", "3000")),
@@ -31,7 +45,24 @@ export function loadConfig(): Config {
     apiKey: env("CLOUDINARY_API_KEY", DEFAULT_API_KEY),
     apiSecret: env("CLOUDINARY_API_SECRET", DEFAULT_API_SECRET),
     publicBaseUrl: process.env["PUBLIC_BASE_URL"]?.replace(/\/+$/, "") || undefined,
+    adminUsername: optionalEnv("ADMIN_USERNAME"),
+    adminPassword: optionalEnv("ADMIN_PASSWORD"),
+    adminJwtSecret: optionalEnv("ADMIN_JWT_SECRET"),
   };
+}
+
+/**
+ * The admin UI is opt-in: it is only mounted when a username *and* a password
+ * are configured. Anything less and no `/admin` route is registered at all, so
+ * the panel cannot be reached (or brute-forced) on a default deployment.
+ */
+export function isAdminEnabled(config: Config): boolean {
+  return (
+    typeof config.adminUsername === "string" &&
+    config.adminUsername.trim() !== "" &&
+    typeof config.adminPassword === "string" &&
+    config.adminPassword.trim() !== ""
+  );
 }
 
 /** Which of the credentials are still sitting on their committed default value. */

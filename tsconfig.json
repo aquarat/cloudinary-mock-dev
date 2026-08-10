@@ -25,5 +25,9 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+
+  // The browser-side admin UI is checked separately by web/tsconfig.json: it
+  // needs the DOM lib, which conflicts with Bun's own global typings here.
+  "exclude": ["node_modules", "web"]
 }

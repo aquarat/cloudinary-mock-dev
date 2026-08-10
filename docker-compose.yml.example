@@ -9,6 +9,15 @@ services:
       # CLOUDINARY_CLOUD_NAME: your-cloud-name
       # CLOUDINARY_API_KEY: "your-api-key"
       # CLOUDINARY_API_SECRET: your-api-secret
+      #
+      # Optional admin UI at /admin. Setting BOTH a username and a password
+      # enables it; leave them unset (as below) and no /admin route exists at
+      # all. It exposes asset listing and deletion, so only enable it behind
+      # TLS / a trusted network. ADMIN_JWT_SECRET is optional — without it a
+      # random one is generated per boot and sessions end at every restart.
+      # ADMIN_USERNAME: admin
+      # ADMIN_PASSWORD: choose-a-strong-password
+      # ADMIN_JWT_SECRET: a-long-random-string
 
 volumes:
   cloudinary-data:

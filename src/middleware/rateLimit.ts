@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { clientIp } from "../clientIp";
 import { log } from "../logger";
 import { getRequestId } from "../requestContext";
@@ -45,36 +45,56 @@ if (MAX > 0) {
   sweep.unref();
 }
 
-// A max of 0 (or any disabling value) short-circuits to a pass-through so the
-// limiter can be turned off entirely via the environment.
-export const rateLimit: MiddlewareHandler =
-  MAX <= 0
-    ? async (_c, next) => {
-        await next();
-      }
-    : async (c, next) => {
-        const key = clientIp(c);
-        const now = Date.now();
-        const window = windows.get(key);
+export interface RateLimitOptions {
+  /**
+   * Requests for which this returns true bypass the limiter entirely. Used to
+   * exempt a signed-in admin: browsing the asset table fires one API call plus
+   * a thumbnail request per row, which legitimately outruns a limit sized for
+   * anonymous traffic. The predicate must *verify* the caller's session rather
+   * than trust a header, or the exemption becomes a free bypass.
+   */
+  isExempt?: (c: Context) => boolean | Promise<boolean>;
+}
 
-        if (!window || now >= window.resetAt) {
-          // Start (or lazily reset) this key's window.
-          windows.set(key, { count: 1, resetAt: now + WINDOW_MS });
-          return next();
-        }
+/**
+ * Builds the limiter middleware. A max of 0 (or any disabling value)
+ * short-circuits to a pass-through so it can be turned off via the environment.
+ */
+export function createRateLimit(options: RateLimitOptions = {}): MiddlewareHandler {
+  const { isExempt } = options;
 
-        window.count += 1;
-        if (window.count > MAX) {
-          const retryAfterSec = Math.ceil((window.resetAt - now) / 1000);
-          log.warn("rate_limit", {
-            req_id: getRequestId(c),
-            ip: key,
-            count: window.count,
-            limit: MAX,
-          });
-          c.header("Retry-After", String(retryAfterSec));
-          return c.json({ error: { message: "Rate limit exceeded" } }, 429);
-        }
+  if (MAX <= 0) {
+    return async (_c, next) => {
+      await next();
+    };
+  }
 
-        return next();
-      };
+  return async (c, next) => {
+    if (isExempt && (await isExempt(c))) return next();
+
+    const key = clientIp(c);
+    const now = Date.now();
+    const window = windows.get(key);
+
+    if (!window || now >= window.resetAt) {
+      // Start (or lazily reset) this key's window.
+      windows.set(key, { count: 1, resetAt: now + WINDOW_MS });
+      return next();
+    }
+
+    window.count += 1;
+    if (window.count > MAX) {
+      const retryAfterSec = Math.ceil((window.resetAt - now) / 1000);
+      log.warn("rate_limit", {
+        req_id: getRequestId(c),
+        ip: key,
+        count: window.count,
+        limit: MAX,
+      });
+      c.header("Retry-After", String(retryAfterSec));
+      return c.json({ error: { message: "Rate limit exceeded" } }, 429);
+    }
+
+    return next();
+  };
+}

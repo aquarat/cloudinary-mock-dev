@@ -36,6 +36,8 @@ Upload responses build their `url`/`secure_url` against this same server, so an 
 
 **Storage:** asset metadata lives in a SQLite database (`assets.sqlite`) and file bytes on disk under `blobs/`, both inside `DATA_DIR`. A structured access log is written to `DATA_DIR/access.log`.
 
+**Admin UI** (optional, off by default): a small React browser app at `/admin` for browsing and deleting stored assets. See [Admin UI](#admin-ui).
+
 ## Requirements
 
 - [Bun](https://bun.sh) 1.x (the server uses `bun:sqlite` and `Bun.write`, so Node.js won't work), **or**
@@ -77,9 +79,12 @@ All configuration is via environment variables:
 | `CLOUDINARY_API_SECRET` | `abcdef1234567890` | Secret used to verify request signatures (Cloudinary's SHA-1 scheme). |
 | `PUBLIC_BASE_URL` | *(unset)* | Overrides the base URL used when building asset URLs in upload responses. When unset, the incoming request's `Host` header (and `X-Forwarded-Proto`) is used. |
 | `MAX_UPLOAD_BYTES` | configurable, sensible default (~25 MiB) | Maximum accepted upload size, in bytes. Uploads larger than this are rejected. |
-| `RATE_LIMIT_MAX` | configurable, sensible default (~120) | Maximum requests allowed per IP within `RATE_LIMIT_WINDOW_MS` before requests are throttled. |
+| `RATE_LIMIT_MAX` | configurable, sensible default (~120) | Maximum requests allowed per IP within `RATE_LIMIT_WINDOW_MS` before requests are throttled. Requests carrying a valid admin session are exempt — see [Admin UI](#admin-ui). |
 | `RATE_LIMIT_WINDOW_MS` | configurable, sensible default (~60000, i.e. 1 minute) | Length of the rate-limiting window, in milliseconds. Together with `RATE_LIMIT_MAX` this defaults to roughly 120 requests/minute per IP. |
 | `NODE_ENV` | *(unset)* | Set to `development` to allow running with the shipped default credentials. On an exposed instance leave this unset (or `production`) and provide your own credentials — see [Security](#security). |
+| `ADMIN_USERNAME` | *(unset)* | Username for the optional [admin UI](#admin-ui). The UI is only enabled when this **and** `ADMIN_PASSWORD` are set and non-empty; otherwise no `/admin` route is registered at all. |
+| `ADMIN_PASSWORD` | *(unset)* | Password for the admin UI. Required together with `ADMIN_USERNAME` — either one alone leaves the UI disabled. |
+| `ADMIN_JWT_SECRET` | *(unset)* | HMAC secret used to sign admin session tokens. When unset, a random secret is generated at boot (logged as a warning) and existing admin sessions stop working after a restart. Set it to a long random string to keep sessions across restarts. |
 
 Set the cloud name / key / secret to the **same values your application is configured with** — the clone verifies signatures exactly as Cloudinary does, so mismatched credentials mean 401s.
 
@@ -98,14 +103,83 @@ development:
 
 Because upload responses return URLs pointing back at the clone, delivery works automatically for assets whose returned `secure_url` is stored. If the app builds delivery URLs itself, point its delivery host at the clone as well (or set `PUBLIC_BASE_URL` so returned URLs use an address reachable from the browser).
 
+## Admin UI
+
+An optional, password-protected web UI at `/admin` for looking at what the clone is holding. It lists every stored asset with a thumbnail, public id, format, dimensions, size, tags and creation date; the name, size and date columns are click-to-sort; there is a text filter over public ids and tags; and each row has a two-step (click, then confirm) delete that removes the metadata row *and* the stored bytes via the same code path as the signed `destroy` API.
+
+It is a read-and-delete view over the existing store — there is no upload or edit function, and it adds no separate storage of its own.
+
+### Shareable views
+
+The table's state lives in the query string, so any view is reproducible by URL — bookmark it, share it, or reload without losing your place:
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `q` | Free text matched against public ids and tags | *(none)* |
+| `sort` | `name`, `size`, `date` | `date` |
+| `order` | `asc`, `desc` | `desc` |
+| `per` | `50`, `100`, `250`, `500`, `1000`, `2500`, `5000` | `50` |
+| `page` | 1-based page number | `1` |
+
+For example, `/admin?q=gallery&sort=size&order=desc&per=250&page=2`. Parameters are omitted from the URL while they hold their default, so an untouched view stays a plain `/admin`. Anything unrecognised — a misspelled sort key, a page size that isn't offered, a negative page — falls back to the default rather than being passed to the server.
+
+Rows per page is also a control in the footer. The larger sizes are offered deliberately, but note that a page of 5000 renders 5000 rows and requests 5000 thumbnails; images load lazily, so this is usually survivable, but it is your browser's memory being spent.
+
+### Bulk deletion
+
+Each row has a checkbox, and the header checkbox selects everything on the current page. Once anything is selected a toolbar appears with the count and a two-step **Delete selected**.
+
+Selecting a whole page also offers to escalate: *"Select all N matching…"* extends the selection to every asset matching the current filter, **including rows on pages you have not opened**. So filtering for `apple`, ticking the page, then taking the escalation link and deleting will remove every `apple` match across all pages. With an empty filter that means the entire store, so the toolbar spells out what will happen before you confirm.
+
+The escalated form is resolved server-side from the filter rather than by sending every id from the browser, so it costs the same whether it matches ten assets or fifty thousand. Deletion runs in bounded batches (500 per request) and the button reports progress as it drains; changing the filter clears the selection, since the filter is what defines the set.
+
+### Enabling it
+
+The UI is **disabled by default**. It is only mounted when both credentials are present:
+
+```sh
+ADMIN_USERNAME=admin ADMIN_PASSWORD='a-strong-password' bun run start
+```
+
+With either variable missing or empty the admin router is never registered, so `/admin` and `/admin/api/*` 404 exactly like any other unknown path.
+
+Before running from source (not needed for the Docker image, which builds it during `docker build`), build the browser bundle once:
+
+```sh
+bun run build:web    # bundles web/ -> web/dist with Bun's bundler
+```
+
+If the bundle is missing, `/admin` serves a short page telling you to run that command rather than a blank screen.
+
+### Sessions
+
+Sign-in posts the credentials to `/admin/api/login`, which compares both username and password in constant time and returns an HS256 JWT valid for 8 hours. The browser keeps it in `localStorage` and sends it as `Authorization: Bearer …`; every `/admin/api/*` endpoint except login rejects requests without a valid token.
+
+Tokens are signed with `ADMIN_JWT_SECRET`. If that is unset, a random secret is generated at boot — tokens are still unforgeable, but every restart invalidates outstanding sessions (the server logs a warning saying so). There is deliberately no built-in default secret.
+
+### Previews
+
+Only inert raster images (JPEG, PNG, GIF, WebP, AVIF, BMP) are shown as thumbnails. Everything else — SVG, PDF, video, `raw` — is sent by the delivery route with `Content-Disposition: attachment` under a sandboxing CSP (see [Security](#security)), so it would download rather than render; those rows show a format placeholder instead of a broken image.
+
+### Security notes
+
+Enabling the admin UI puts asset listing **and deletion** behind nothing but a username and password, so:
+
+- Serve it over TLS, behind a reverse proxy, and/or restrict it to a trusted network. The password crosses the wire in the clear over plain HTTP.
+- Use a real password. There is per-IP rate limiting (`RATE_LIMIT_MAX`) in front of login, but that is not a substitute for a strong secret.
+- **Signed-in admins bypass the rate limiter.** One page of the asset table issues an API call plus a thumbnail request per row, which would otherwise exhaust a limit sized for anonymous callers within a couple of pages. Because a thumbnail is a plain `<img>` request that cannot carry an `Authorization` header, logging in also sets an `httpOnly`, `SameSite=Strict` session cookie so those requests are recognisable. That cookie is **only** consulted by the rate limiter — every admin API endpoint still requires the bearer token, which is what keeps the API immune to cross-site requests. The exemption verifies the token's signature, so an invented header or cookie value buys nothing. Login itself stays rate-limited.
+- Set `ADMIN_JWT_SECRET` to a long random value on anything long-lived, and treat it like a password — anyone holding it can mint admin sessions.
+- Leave it disabled unless you want it. That is the default, and it is the safest configuration.
+
 ## Development
 
 ```sh
-bun test             # run the test suite (signature, upload, tags)
-bun run typecheck    # tsc --noEmit
+bun test             # run the test suite (signature, upload, tags, admin)
+bun run typecheck    # tsc --noEmit, for the server and (separately) web/
+bun run build:web    # bundle the admin UI into web/dist
 ```
 
-The code is a small [Hono](https://hono.dev) app: routes live in [src/routes/](src/routes/), with signature verification in [src/signature.ts](src/signature.ts) and persistence in [src/store.ts](src/store.ts).
+The code is a small [Hono](https://hono.dev) app: routes live in [src/routes/](src/routes/), with signature verification in [src/signature.ts](src/signature.ts) and persistence in [src/store.ts](src/store.ts). The admin UI's React sources live in [web/](web/) and are bundled with Bun's own bundler — no Vite/webpack, no CDN assets, nothing loaded off-origin.
 
 ## Security
 
@@ -117,13 +191,14 @@ This server is built for local development and trusted-network use. It can be ex
 - **Upload size limits and rate limiting.** Uploads are capped at `MAX_UPLOAD_BYTES`, and there is basic per-IP rate limiting via `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` to blunt abuse. See [Configuration](#configuration).
 - **SSRF protection on remote-URL uploads.** Passing an `http(s)://` URL as the `file` param fetches it server-side, but requests to private, internal, loopback, link-local, and cloud-metadata addresses are blocked to prevent server-side request forgery.
 - **Unsigned uploads are accepted.** Any `upload_preset` value is accepted as an unsigned upload. On an exposed instance, prefer requiring signed uploads and place the service behind a reverse proxy with additional access controls.
+- **The admin UI is opt-in.** `/admin` does not exist unless `ADMIN_USERNAME` and `ADMIN_PASSWORD` are both set. Enabling it exposes asset listing and deletion behind a single username/password, so only do so behind TLS and a trusted network — see [Admin UI](#admin-ui).
 - **Run behind a reverse proxy.** For any non-trivial exposure, put the clone behind a reverse proxy that terminates TLS, restrict network exposure, and set strong credentials.
 
 ## Limitations
 
 - **No transformations.** Resize/crop/quality/format segments in delivery URLs are parsed but ignored; the original bytes are always returned.
 - **Delivery is unauthenticated.** `private` and `authenticated` delivery types are accepted as path segments but behave like `upload` — anyone with the URL gets the asset. Do not expose this server publicly with sensitive content.
-- **No Admin API** (`/v1_1/.../resources`, search, etc.) — only upload, destroy, and tags.
+- **No Admin API** (`/v1_1/.../resources`, search, etc.) — only upload, destroy, and tags. (The optional [admin UI](#admin-ui) has its own private `/admin/api` endpoints; they are not Cloudinary-compatible.)
 - Upload presets are not defined anywhere; any `upload_preset` value is accepted as an unsigned upload.
 - Delivery responses are sent with `Cache-Control: no-store`, and version numbers in URLs are not checked — a re-upload to the same `public_id` replaces the asset.
 - Some response fields (`asset_id`, `etag`, `version_id`) are random values, not content-derived.

@@ -1,0 +1,13 @@
+{
+  // The admin SPA is browser code, so it needs the DOM lib and React's JSX
+  // runtime. It is checked separately from the server (see the root tsconfig):
+  // pulling DOM into the server's compilation clashes with Bun's globals.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["react", "react-dom"],
+    "jsx": "react-jsx"
+  },
+  "include": ["."],
+  "exclude": ["dist"]
+}

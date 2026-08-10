@@ -62,6 +62,10 @@ export function arrayParam(params: ParsedParams, key: string): string[] {
 export function tagsParam(params: ParsedParams): string[] {
   const value = params["tags"];
   if (Array.isArray(value)) return value.map(String);
-  if (typeof value === "string") return value.split(",").map((t) => t.trim()).filter(Boolean);
+  if (typeof value === "string")
+    return value
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
   return [];
 }

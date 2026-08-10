@@ -9,6 +9,9 @@ out
 dist
 *.tgz
 
+# built admin UI bundle (bun run build:web)
+web/dist
+
 # code coverage
 coverage
 *.lcov
