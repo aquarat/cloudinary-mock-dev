@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Config } from "./config";
+import { rateLimit } from "./middleware/rateLimit";
 import { requestId } from "./middleware/requestId";
 import { requestLog } from "./middleware/requestLog";
 import { createDeliveryRoute } from "./routes/delivery";
@@ -12,6 +13,7 @@ import type { AssetStore } from "./store";
 export function createApp(config: Config, store: AssetStore): Hono {
   const app = new Hono();
   app.use(requestId);
+  app.use(rateLimit);
   app.use(requestLog);
 
   app.route("/", createHealthRoute());

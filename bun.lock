@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "cloudinary-clone",
+      "name": "cloudinary-mock-dev",
       "dependencies": {
         "hono": "^4.12.32",
         "image-size": "^2.0.2",

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 // Params Cloudinary excludes from the signature payload regardless of the
 // request they arrived on. `signature` and `file` never get signed; `api_key`
@@ -45,5 +45,25 @@ export function verifySignature(
 ): boolean {
   const sha1 = signParams(params, apiSecret, "sha1");
   const sha256 = signParams(params, apiSecret, "sha256");
-  return providedSignature === sha1 || providedSignature === sha256;
+  // Compare in constant time so the number of matching characters can't be
+  // inferred from how long the check takes. OR both results rather than
+  // short-circuiting so timing doesn't reveal which algorithm matched.
+  const matchesSha1 = constantTimeEqual(providedSignature, sha1);
+  const matchesSha256 = constantTimeEqual(providedSignature, sha256);
+  return matchesSha1 || matchesSha256;
+}
+
+/**
+ * Length-safe wrapper around `timingSafeEqual`, which throws on differing
+ * buffer lengths. A length mismatch just means the signatures can't be equal,
+ * so `providedSignature` (attacker-controlled, any length) returns false
+ * without leaking timing beyond the length itself.
+ */
+function constantTimeEqual(provided: string, expected: string): boolean {
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  if (providedBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(providedBuffer, expectedBuffer);
 }

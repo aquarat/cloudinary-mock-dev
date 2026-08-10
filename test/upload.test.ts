@@ -21,7 +21,10 @@ describe("upload / delivery / tags / destroy", () => {
   // because "upload by remote URL" makes this process fetch() a delivery URL
   // over the network, same as the real Cloudinary API fetching a source image.
   beforeAll(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "cloudinary-clone-test-"));
+    // The "upload by remote URL" test re-fetches an asset from http://localhost:<port>.
+    // Loopback is otherwise SSRF-blocked, so allowlist it explicitly for the suite.
+    process.env["SSRF_ALLOWED_HOSTS"] = "localhost";
+    dataDir = await mkdtemp(join(tmpdir(), "cloudinary-mock-dev-test-"));
     config = {
       port: 0,
       dataDir,

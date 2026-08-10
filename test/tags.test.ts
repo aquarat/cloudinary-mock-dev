@@ -14,7 +14,7 @@ describe("tags route — Ruby gem wire format", () => {
   let app: Hono;
 
   beforeAll(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "cloudinary-clone-tags-test-"));
+    dataDir = await mkdtemp(join(tmpdir(), "cloudinary-mock-dev-tags-test-"));
     config = {
       port: 0,
       dataDir,

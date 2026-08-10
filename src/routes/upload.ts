@@ -91,6 +91,14 @@ export function createUploadRoute(config: Config, store: AssetStore): Hono {
       requestedFormat: stringParam(params, "format"),
     });
 
+    // `format` is attacker-influenced (via the `format` param / original filename)
+    // and is concatenated into the on-disk storage key below. A value containing
+    // `/`, `.`, `..` or null bytes could escape the blobs directory, so we require
+    // a plain alphanumeric extension and reject anything else outright.
+    if (!/^[a-zA-Z0-9]+$/.test(format)) {
+      return c.json({ error: { message: `Invalid format ${format}` } }, 400);
+    }
+
     const version = Math.floor(Date.now() / 1000);
     const storageKey = `${resourceType}/${type}/${publicId}.${format}`;
 

@@ -1,14 +1,14 @@
 services:
-  cloudinary-clone:
+  cloudinary-mock-dev:
     build: .
     ports:
       - "33000:3000"
     volumes:
       - cloudinary-data:/data
     environment:
-      # CLOUDINARY_CLOUD_NAME: a-name
-      # CLOUDINARY_API_KEY: "1234567896999"
-      # CLOUDINARY_API_SECRET: sdfghsuifvhguksdghfviudv
+      # CLOUDINARY_CLOUD_NAME: your-cloud-name
+      # CLOUDINARY_API_KEY: "your-api-key"
+      # CLOUDINARY_API_SECRET: your-api-secret
 
 volumes:
   cloudinary-data:

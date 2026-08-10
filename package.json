@@ -1,5 +1,5 @@
 {
-  "name": "cloudinary-clone",
+  "name": "cloudinary-mock-dev",
   "module": "src/index.ts",
   "type": "module",
   "private": true,
