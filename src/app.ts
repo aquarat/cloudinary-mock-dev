@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
 import { hasValidAdminSession, resolveJwtSecret } from "./admin/auth";
 import { isAdminEnabled, type Config } from "./config";
 import { log } from "./logger";
@@ -15,6 +17,22 @@ import type { AssetStore } from "./store";
 
 export function createApp(config: Config, store: AssetStore): Hono {
   const app = new Hono();
+  if (config.corsOrigins?.length) {
+    app.use(
+      "/v1_1/*",
+      cors({
+        origin: config.corsOrigins,
+        allowMethods: ["POST", "OPTIONS"],
+        allowHeaders: ["Content-Type"],
+        maxAge: 600,
+      }),
+    );
+  }
+  app.use("/v1_1/*", bodyLimit({ maxSize: 32 * 1024 * 1024 }));
+  app.use(async (c, next) => {
+    await next();
+    c.header("X-Content-Type-Options", "nosniff");
+  });
   const adminEnabled = isAdminEnabled(config);
   // Resolved once and shared: `resolveJwtSecret` mints a fresh random secret
   // when ADMIN_JWT_SECRET is unset, so calling it per consumer would issue

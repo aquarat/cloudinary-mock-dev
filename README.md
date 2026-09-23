@@ -17,6 +17,20 @@ This project is not affiliated with or endorsed by Cloudinary.
 
 ## What it implements
 
+### Public review instances
+
+For a signed-upload-only review instance, set `REQUIRE_SIGNED_UPLOADS=1` along
+with unique credentials and `NODE_ENV=production`. Uploads then require a valid
+signature and a timestamp within one hour (seconds or milliseconds are accepted).
+Unsigned upload presets are rejected in this mode. API request bodies are limited
+to 32 MiB, allowing a 20 MiB image encoded as JSON/base64.
+
+Set `CORS_ORIGINS` to a comma-separated list of exact HTTPS application origins
+to enable browser uploads, for example `https://app.example.test,https://admin.example.test`.
+Set `PUBLIC_BASE_URL` to the externally reachable HTTPS origin for image delivery.
+Keep admin credentials unset when the admin UI is not required. Authentication
+failure logs contain the failure reason, not the supplied API key.
+
 **Upload API** (mimics `api.cloudinary.com/v1_1/...`):
 
 | Endpoint | Notes |

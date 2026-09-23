@@ -6,6 +6,8 @@ export interface Config {
   apiSecret: string;
   /** Overrides the host used when building asset URLs; falls back to the incoming request's Host header. */
   publicBaseUrl: string | undefined;
+  requireSignedUploads?: boolean;
+  corsOrigins?: string[];
   // The admin fields are optional so a Config literal without them (the common
   // case, and what most tests build) is still valid — omitted means disabled.
   /** Admin UI username. The admin UI only exists when this AND `adminPassword` are set. */
@@ -45,6 +47,11 @@ export function loadConfig(): Config {
     apiKey: env("CLOUDINARY_API_KEY", DEFAULT_API_KEY),
     apiSecret: env("CLOUDINARY_API_SECRET", DEFAULT_API_SECRET),
     publicBaseUrl: process.env["PUBLIC_BASE_URL"]?.replace(/\/+$/, "") || undefined,
+    requireSignedUploads: process.env["REQUIRE_SIGNED_UPLOADS"] === "1",
+    corsOrigins: (process.env["CORS_ORIGINS"] || "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
     adminUsername: optionalEnv("ADMIN_USERNAME"),
     adminPassword: optionalEnv("ADMIN_PASSWORD"),
     adminJwtSecret: optionalEnv("ADMIN_JWT_SECRET"),

@@ -27,13 +27,12 @@ export function createUploadRoute(config: Config, store: AssetStore): Hono {
 
   app.post("/v1_1/:cloudName/:resourceType{image|video|raw|auto}/upload", async (c) => {
     const { cloudName, resourceType: requestedResourceType } = c.req.param();
-    const authFailed = (reason: string, apiKey?: string) => {
+    const authFailed = (reason: string) => {
       log.warn("auth_failed", {
         req_id: getRequestId(c),
         reason,
         ip: clientIp(c),
         cloud_name: cloudName,
-        api_key: apiKey,
       });
     };
 
@@ -56,17 +55,26 @@ export function createUploadRoute(config: Config, store: AssetStore): Hono {
     const signature = stringParam(params, "signature");
     const uploadPreset = stringParam(params, "upload_preset");
 
+    if (config.requireSignedUploads) {
+      const timestamp = Number(params["timestamp"]);
+      const seconds = timestamp > 1e12 ? timestamp / 1000 : timestamp;
+      if (!signature || !Number.isFinite(seconds) || Math.abs(Date.now() / 1000 - seconds) > 3600) {
+        authFailed("missing_or_expired_signature");
+        return c.json({ error: { message: "A current signed upload is required." } }, 401);
+      }
+    }
+
     if (signature) {
       if (apiKey !== config.apiKey) {
-        authFailed("invalid_api_key", apiKey);
+        authFailed("invalid_api_key");
         return c.json({ error: { message: "Invalid api_key" } }, 401);
       }
       if (!verifySignature(params, signature, config.apiSecret)) {
-        authFailed("invalid_signature", apiKey);
+        authFailed("invalid_signature");
         return c.json({ error: { message: "Invalid Signature." } }, 401);
       }
     } else if (!uploadPreset) {
-      authFailed("missing_signature", apiKey);
+      authFailed("missing_signature");
       return c.json({ error: { message: "Missing signature (and no upload_preset for an unsigned upload)." } }, 401);
     }
 

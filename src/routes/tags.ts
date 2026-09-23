@@ -29,13 +29,12 @@ export function createTagsRoute(config: Config, store: AssetStore): Hono {
 
   app.post("/v1_1/:cloudName/:resourceType{image|video|raw}/tags", async (c) => {
     const { cloudName, resourceType } = c.req.param();
-    const authFailed = (reason: string, apiKey?: string) => {
+    const authFailed = (reason: string) => {
       log.warn("auth_failed", {
         req_id: getRequestId(c),
         reason,
         ip: clientIp(c),
         cloud_name: cloudName,
-        api_key: apiKey,
       });
     };
 
@@ -49,7 +48,7 @@ export function createTagsRoute(config: Config, store: AssetStore): Hono {
     const signature = stringParam(params, "signature");
 
     if (!signature || apiKey !== config.apiKey || !verifySignature(params, signature, config.apiSecret)) {
-      authFailed("invalid_signature", apiKey);
+      authFailed("invalid_signature");
       return c.json({ error: { message: "Invalid Signature." } }, 401);
     }
 
