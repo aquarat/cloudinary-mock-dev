@@ -11,6 +11,8 @@ A small, self-hosted stand-in for [Cloudinary](https://cloudinary.com), intended
 
 It is **not** a general-purpose Cloudinary replacement: it stores originals and serves them back verbatim. See [Limitations](#limitations).
 
+This project is not affiliated with or endorsed by Cloudinary.
+
 > **⚠️ This is a development tool.** Do not expose it to the untrusted public internet without the hardening described in [Security](#security) below. It is designed for local development and trusted-network use.
 
 ## What it implements
@@ -78,10 +80,12 @@ All configuration is via environment variables:
 | `CLOUDINARY_API_KEY` | `123456789` | API key checked on signed requests. |
 | `CLOUDINARY_API_SECRET` | `abcdef1234567890` | Secret used to verify request signatures (Cloudinary's SHA-1 scheme). |
 | `PUBLIC_BASE_URL` | *(unset)* | Overrides the base URL used when building asset URLs in upload responses. When unset, the incoming request's `Host` header (and `X-Forwarded-Proto`) is used. |
-| `MAX_UPLOAD_BYTES` | configurable, sensible default (~25 MiB) | Maximum accepted upload size, in bytes. Uploads larger than this are rejected. |
-| `RATE_LIMIT_MAX` | configurable, sensible default (~120) | Maximum requests allowed per IP within `RATE_LIMIT_WINDOW_MS` before requests are throttled. Requests carrying a valid admin session are exempt — see [Admin UI](#admin-ui). |
-| `RATE_LIMIT_WINDOW_MS` | configurable, sensible default (~60000, i.e. 1 minute) | Length of the rate-limiting window, in milliseconds. Together with `RATE_LIMIT_MAX` this defaults to roughly 120 requests/minute per IP. |
-| `NODE_ENV` | *(unset)* | Set to `development` to allow running with the shipped default credentials. On an exposed instance leave this unset (or `production`) and provide your own credentials — see [Security](#security). |
+| `MAX_UPLOAD_BYTES` | `26214400` (25 MiB) | Maximum accepted size of one file, in bytes, however it arrives (multipart, remote URL or data URI). Larger uploads are rejected. |
+| `RATE_LIMIT_MAX` | `120` | Maximum requests per client IP within `RATE_LIMIT_WINDOW_MS`; further requests get a 429. `0` disables rate limiting, which is usually what you want locally: delivery requests count too, so one image-heavy page can use up the default. Requests carrying a valid admin session are exempt — see [Admin UI](#admin-ui). |
+| `RATE_LIMIT_WINDOW_MS` | `60000` (1 minute) | Length of the rate-limiting window, in milliseconds. |
+| `NODE_ENV` | *(unset)* | Set to `production` on anything exposed: the server then refuses to start while any of the three Cloudinary credentials is still on its shipped default. With any other value, or unset, the defaults are accepted with a startup warning. |
+| `ALLOW_DEFAULT_CREDENTIALS` | *(unset)* | Set to `1` to accept the shipped default credentials even when `NODE_ENV=production`. |
+| `SSRF_ALLOWED_HOSTS` | *(unset)* | Comma-separated hostnames or IPs, matched exactly, that remote-URL uploads may fetch from even though they are private or loopback addresses (for example `localhost,127.0.0.1`). See [Security](#security). |
 | `ADMIN_USERNAME` | *(unset)* | Username for the optional [admin UI](#admin-ui). The UI is only enabled when this **and** `ADMIN_PASSWORD` are set and non-empty; otherwise no `/admin` route is registered at all. |
 | `ADMIN_PASSWORD` | *(unset)* | Password for the admin UI. Required together with `ADMIN_USERNAME` — either one alone leaves the UI disabled. |
 | `ADMIN_JWT_SECRET` | *(unset)* | HMAC secret used to sign admin session tokens. When unset, a random secret is generated at boot (logged as a warning) and existing admin sessions stop working after a restart. Set it to a long random string to keep sessions across restarts. |
@@ -185,11 +189,11 @@ The code is a small [Hono](https://hono.dev) app: routes live in [src/routes/](s
 
 This server is built for local development and trusted-network use. It can be exposed more widely, but only after hardening. The intended security posture is:
 
-- **Set your own credentials.** You **must** set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to non-default values of your own. The server ships with well-known default credentials purely for local-dev convenience; on an exposed instance it will refuse to start with the defaults (or only accept them in an explicit development mode — see `NODE_ENV` in [Configuration](#configuration)). Never rely on the defaults on anything reachable by untrusted clients.
+- **Set your own credentials.** Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to values of your own. The shipped defaults are public, so anyone can forge signatures with them; they exist only for local-dev convenience. Run exposed instances with `NODE_ENV=production`, which makes the server refuse to start while any default is still in place — see [Configuration](#configuration).
 - **Delivery is unauthenticated.** Anyone who has an asset URL can fetch it — there is no access control on delivery. Do not store sensitive or private content here.
 - **Treat uploaded content as untrusted.** Uploaded bytes are served back to browsers. The server forces risky types (e.g. SVG) to download rather than render inline, and sends anti-sniffing and Content-Security-Policy headers, but you should still treat anything uploaded as potentially hostile.
-- **Upload size limits and rate limiting.** Uploads are capped at `MAX_UPLOAD_BYTES`, and there is basic per-IP rate limiting via `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` to blunt abuse. See [Configuration](#configuration).
-- **SSRF protection on remote-URL uploads.** Passing an `http(s)://` URL as the `file` param fetches it server-side, but requests to private, internal, loopback, link-local, and cloud-metadata addresses are blocked to prevent server-side request forgery.
+- **Upload size limits and rate limiting.** Uploads are capped at `MAX_UPLOAD_BYTES`, and there is basic per-IP rate limiting via `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` to blunt abuse. The client IP is taken from `CF-Connecting-IP` or `X-Forwarded-For` when present, and from the connection otherwise. Those headers are trusted as sent, so an exposed instance needs a reverse proxy that sets them itself; without one a caller can dodge the limiter by inventing a new address per request. See [Configuration](#configuration).
+- **SSRF protection on remote-URL uploads.** Passing an `http(s)://` URL as the `file` param fetches it server-side, but requests to private, internal, loopback, link-local, and cloud-metadata addresses are blocked to prevent server-side request forgery. To upload from a URL on your own machine or network during development, list the host in `SSRF_ALLOWED_HOSTS`.
 - **Unsigned uploads are accepted.** Any `upload_preset` value is accepted as an unsigned upload. On an exposed instance, prefer requiring signed uploads and place the service behind a reverse proxy with additional access controls.
 - **The admin UI is opt-in.** `/admin` does not exist unless `ADMIN_USERNAME` and `ADMIN_PASSWORD` are both set. Enabling it exposes asset listing and deletion behind a single username/password, so only do so behind TLS and a trusted network — see [Admin UI](#admin-ui).
 - **Run behind a reverse proxy.** For any non-trivial exposure, put the clone behind a reverse proxy that terminates TLS, restrict network exposure, and set strong credentials.

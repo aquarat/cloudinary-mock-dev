@@ -10,6 +10,10 @@ services:
       # CLOUDINARY_API_KEY: "your-api-key"
       # CLOUDINARY_API_SECRET: your-api-secret
       #
+      # Rate limiting is on by default (120 requests a minute per client IP,
+      # delivery included). For local use it mostly gets in the way; 0 turns it off.
+      # RATE_LIMIT_MAX: "0"
+      #
       # Optional admin UI at /admin. Setting BOTH a username and a password
       # enables it; leave them unset (as below) and no /admin route exists at
       # all. It exposes asset listing and deletion, so only enable it behind
