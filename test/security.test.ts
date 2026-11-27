@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Hono } from "hono";
 import { createApp } from "../src/app";
 import type { Config } from "../src/config";
@@ -100,6 +100,8 @@ describe("upload route hardening (integration)", () => {
 
   afterAll(async () => {
     await rm(dataDir, { recursive: true, force: true });
+    // Only exists if the `type` traversal test below found a regression.
+    await rm(`${dataDir}-escaped`, { recursive: true, force: true });
   });
 
   test("a traversal public_id is sanitised, not written outside the blobs dir", async () => {
@@ -127,6 +129,48 @@ describe("upload route hardening (integration)", () => {
     const deliveryPath = new URL(body["url"] as string).pathname;
     const deliveryRes = await app.request(deliveryPath);
     expect(deliveryRes.status).toBe(200);
+  });
+
+  test("a traversal `type` is rejected, on signed and unsigned uploads alike", async () => {
+    // `image/<type>` under DATA_DIR/blobs: three levels up is DATA_DIR's parent.
+    // The target is named after this run's own temp dir so it can't collide.
+    const escapeDir = `${dataDir}-escaped`;
+    const type = `../../../${basename(escapeDir)}`;
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    const signed = new FormData();
+    signed.append("file", ONE_PIXEL_PNG_DATA_URI);
+    signed.append("api_key", config.apiKey);
+    signed.append("timestamp", String(timestamp));
+    signed.append("signature", signParams({ public_id: "pwned", timestamp, type }, config.apiSecret));
+    signed.append("public_id", "pwned");
+    signed.append("type", type);
+
+    const unsigned = new FormData();
+    unsigned.append("file", ONE_PIXEL_PNG_DATA_URI);
+    unsigned.append("upload_preset", "anything");
+    unsigned.append("public_id", "pwned");
+    unsigned.append("type", type);
+
+    for (const form of [signed, unsigned]) {
+      const res = await app.request("/v1_1/test-cloud/image/upload", { method: "POST", body: form });
+      expect(res.status).toBe(400);
+    }
+
+    expect(await Bun.file(join(escapeDir, "pwned.png")).exists()).toBe(false);
+  });
+
+  test("the known delivery types are still accepted", async () => {
+    for (const type of ["upload", "private", "authenticated"]) {
+      const form = new FormData();
+      form.append("file", ONE_PIXEL_PNG_DATA_URI);
+      form.append("upload_preset", "anything");
+      form.append("public_id", `typed-${type}`);
+      form.append("type", type);
+      const res = await app.request("/v1_1/test-cloud/image/upload", { method: "POST", body: form });
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as Record<string, unknown>)["type"]).toBe(type);
+    }
   });
 });
 

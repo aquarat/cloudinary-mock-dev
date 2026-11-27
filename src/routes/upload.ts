@@ -14,6 +14,7 @@ import type { AssetStore } from "../store";
 import type { CloudinaryUploadResponse, DeliveryType, ResourceType } from "../types";
 
 const VALID_RESOURCE_TYPES = new Set(["image", "video", "raw", "auto"]);
+const VALID_DELIVERY_TYPES = new Set<string>(["upload", "private", "authenticated", "fetch"]);
 
 function detectResourceType(contentType: string | null): ResourceType {
   if (contentType?.startsWith("video/")) return "video";
@@ -80,7 +81,14 @@ export function createUploadRoute(config: Config, store: AssetStore): Hono {
       requestedResourceType === "auto"
         ? detectResourceType(resolved.contentType)
         : (requestedResourceType as ResourceType);
-    const type: DeliveryType = (stringParam(params, "type") as DeliveryType | undefined) ?? "upload";
+    // `type` becomes a directory in the on-disk storage key below, so it must be
+    // one of the known delivery types — an arbitrary value such as `../../x`
+    // would otherwise write the blob outside the blobs directory.
+    const requestedType = stringParam(params, "type") ?? "upload";
+    if (!VALID_DELIVERY_TYPES.has(requestedType)) {
+      return c.json({ error: { message: `Invalid type ${requestedType}` } }, 400);
+    }
+    const type = requestedType as DeliveryType;
     const folder = stringParam(params, "folder");
     const requestedPublicId = stringParam(params, "public_id");
     const publicId = resolvePublicId({ publicId: requestedPublicId, folder });
