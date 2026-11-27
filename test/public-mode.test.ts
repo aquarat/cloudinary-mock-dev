@@ -65,3 +65,27 @@ test("CORS permits only configured browser origins", async () => {
     expect(response.headers.get("access-control-allow-origin")).toBe(origin.includes("untrusted") ? null : origin);
   }
 });
+test("the preflight allows the X-Requested-With header Cloudinary's browser SDKs send", async () => {
+  const response = await app.request("/v1_1/public-test/image/upload", {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://app.example.test",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type,x-requested-with",
+    },
+  });
+  const allowed = (response.headers.get("access-control-allow-headers") ?? "").toLowerCase();
+  expect(allowed).toContain("x-requested-with");
+  expect(allowed).toContain("content-type");
+});
+test("an oversized request body gets a Cloudinary-shaped 413", async () => {
+  // Default cap: MAX_UPLOAD_BYTES (25 MiB) * 4/3 + 1 MiB, so 40 MiB is over it.
+  const response = await app.request("/v1_1/public-test/image/upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Content-Length": String(40 * 1024 * 1024) },
+    body: "{}",
+  });
+  expect(response.status).toBe(413);
+  const body = (await response.json()) as { error: { message: string } };
+  expect(body.error.message).toContain("exceeds");
+});

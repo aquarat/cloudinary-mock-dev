@@ -17,20 +17,6 @@ This project is not affiliated with or endorsed by Cloudinary.
 
 ## What it implements
 
-### Public review instances
-
-For a signed-upload-only review instance, set `REQUIRE_SIGNED_UPLOADS=1` along
-with unique credentials and `NODE_ENV=production`. Uploads then require a valid
-signature and a timestamp within one hour (seconds or milliseconds are accepted).
-Unsigned upload presets are rejected in this mode. API request bodies are limited
-to 32 MiB, allowing a 20 MiB image encoded as JSON/base64.
-
-Set `CORS_ORIGINS` to a comma-separated list of exact HTTPS application origins
-to enable browser uploads, for example `https://app.example.test,https://admin.example.test`.
-Set `PUBLIC_BASE_URL` to the externally reachable HTTPS origin for image delivery.
-Keep admin credentials unset when the admin UI is not required. Authentication
-failure logs contain the failure reason, not the supplied API key.
-
 **Upload API** (mimics `api.cloudinary.com/v1_1/...`):
 
 | Endpoint | Notes |
@@ -94,7 +80,9 @@ All configuration is via environment variables:
 | `CLOUDINARY_API_KEY` | `123456789` | API key checked on signed requests. |
 | `CLOUDINARY_API_SECRET` | `abcdef1234567890` | Secret used to verify request signatures (Cloudinary's SHA-1 scheme). |
 | `PUBLIC_BASE_URL` | *(unset)* | Overrides the base URL used when building asset URLs in upload responses. When unset, the incoming request's `Host` header (and `X-Forwarded-Proto`) is used. |
-| `MAX_UPLOAD_BYTES` | `26214400` (25 MiB) | Maximum accepted size of one file, in bytes, however it arrives (multipart, remote URL or data URI). Larger uploads are rejected. |
+| `REQUIRE_SIGNED_UPLOADS` | *(unset)* | Set to `1` to refuse unsigned uploads: every upload must then carry a valid signature whose `timestamp` is within an hour of now. See [Exposed instances](#exposed-instances). |
+| `CORS_ORIGINS` | *(unset)* | Comma-separated list of exact origins (for example `https://app.example.test,https://admin.example.test`) allowed to call the Upload API from a browser. When unset, no CORS headers are sent. |
+| `MAX_UPLOAD_BYTES` | `26214400` (25 MiB) | Maximum accepted size of one file, in bytes, however it arrives (multipart, remote URL or data URI). Larger uploads are rejected. Upload API request bodies are capped at four thirds of this plus 1 MiB, which leaves room for a file of this size sent as base64. |
 | `RATE_LIMIT_MAX` | `120` | Maximum requests per client IP within `RATE_LIMIT_WINDOW_MS`; further requests get a 429. `0` disables rate limiting, which is usually what you want locally: delivery requests count too, so one image-heavy page can use up the default. Requests carrying a valid admin session are exempt — see [Admin UI](#admin-ui). |
 | `RATE_LIMIT_WINDOW_MS` | `60000` (1 minute) | Length of the rate-limiting window, in milliseconds. |
 | `NODE_ENV` | *(unset)* | Set to `production` on anything exposed: the server then refuses to start while any of the three Cloudinary credentials is still on its shipped default. With any other value, or unset, the defaults are accepted with a startup warning. |
@@ -208,16 +196,28 @@ This server is built for local development and trusted-network use. It can be ex
 - **Treat uploaded content as untrusted.** Uploaded bytes are served back to browsers. The server forces risky types (e.g. SVG) to download rather than render inline, and sends anti-sniffing and Content-Security-Policy headers, but you should still treat anything uploaded as potentially hostile.
 - **Upload size limits and rate limiting.** Uploads are capped at `MAX_UPLOAD_BYTES`, and there is basic per-IP rate limiting via `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` to blunt abuse. The client IP is taken from `CF-Connecting-IP` or `X-Forwarded-For` when present, and from the connection otherwise. Those headers are trusted as sent, so an exposed instance needs a reverse proxy that sets them itself; without one a caller can dodge the limiter by inventing a new address per request. See [Configuration](#configuration).
 - **SSRF protection on remote-URL uploads.** Passing an `http(s)://` URL as the `file` param fetches it server-side, but requests to private, internal, loopback, link-local, and cloud-metadata addresses are blocked to prevent server-side request forgery. To upload from a URL on your own machine or network during development, list the host in `SSRF_ALLOWED_HOSTS`.
-- **Unsigned uploads are accepted.** Any `upload_preset` value is accepted as an unsigned upload. On an exposed instance, prefer requiring signed uploads and place the service behind a reverse proxy with additional access controls.
+- **Unsigned uploads are accepted by default.** Any `upload_preset` value is accepted as an unsigned upload. On an exposed instance set `REQUIRE_SIGNED_UPLOADS=1` — see [Exposed instances](#exposed-instances).
 - **The admin UI is opt-in.** `/admin` does not exist unless `ADMIN_USERNAME` and `ADMIN_PASSWORD` are both set. Enabling it exposes asset listing and deletion behind a single username/password, so only do so behind TLS and a trusted network — see [Admin UI](#admin-ui).
 - **Run behind a reverse proxy.** For any non-trivial exposure, put the clone behind a reverse proxy that terminates TLS, restrict network exposure, and set strong credentials.
+
+### Exposed instances
+
+To run the clone somewhere browsers on other machines can reach it, for example as the media backend of a shared test environment:
+
+- Set `NODE_ENV=production` and your own `CLOUDINARY_*` credentials, so the server cannot start on the shipped defaults.
+- Set `REQUIRE_SIGNED_UPLOADS=1`. Uploads then need a valid signature and a `timestamp` within one hour of now (seconds or milliseconds are both accepted), and unsigned `upload_preset` uploads are refused.
+- Set `CORS_ORIGINS` to the exact origins of the applications whose pages upload straight from the browser.
+- Set `PUBLIC_BASE_URL` to the externally reachable HTTPS origin, so returned asset URLs work from those browsers.
+- Leave `ADMIN_USERNAME` and `ADMIN_PASSWORD` unset unless you need the admin UI.
+
+Authentication failures are logged with the reason and client IP, never the API key that was supplied.
 
 ## Limitations
 
 - **No transformations.** Resize/crop/quality/format segments in delivery URLs are parsed but ignored; the original bytes are always returned.
 - **Delivery is unauthenticated.** `private` and `authenticated` delivery types are accepted as path segments but behave like `upload` — anyone with the URL gets the asset. Do not expose this server publicly with sensitive content.
 - **No Admin API** (`/v1_1/.../resources`, search, etc.) — only upload, destroy, and tags. (The optional [admin UI](#admin-ui) has its own private `/admin/api` endpoints; they are not Cloudinary-compatible.)
-- Upload presets are not defined anywhere; any `upload_preset` value is accepted as an unsigned upload.
+- Upload presets are not defined anywhere; any `upload_preset` value is accepted as an unsigned upload, unless `REQUIRE_SIGNED_UPLOADS=1`.
 - Delivery responses are sent with `Cache-Control: no-store`, and version numbers in URLs are not checked — a re-upload to the same `public_id` replaces the asset.
 - Some response fields (`asset_id`, `etag`, `version_id`) are random values, not content-derived.
 

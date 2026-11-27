@@ -14,7 +14,7 @@ const DATA_URI_RE = /^data:([^;,]+)?(;base64)?,(.*)$/s;
 // from MAX_UPLOAD_BYTES so operators can tune it without a code change, and
 // falls back to 25 MiB when it is unset or nonsensical. Kept self-contained
 // here (not in config.ts) so this module is safe to reuse in isolation.
-const MAX_UPLOAD_BYTES = (() => {
+export const MAX_UPLOAD_BYTES = (() => {
   const raw = process.env["MAX_UPLOAD_BYTES"];
   const parsed = raw !== undefined ? Number(raw) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 25 * 1024 * 1024;

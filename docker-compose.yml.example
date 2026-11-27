@@ -14,6 +14,14 @@ services:
       # delivery included). For local use it mostly gets in the way; 0 turns it off.
       # RATE_LIMIT_MAX: "0"
       #
+      # For an instance other machines can reach: refuse unsigned uploads, and
+      # name the origins whose pages upload from the browser. See the README's
+      # "Exposed instances".
+      # NODE_ENV: production
+      # REQUIRE_SIGNED_UPLOADS: "1"
+      # CORS_ORIGINS: https://app.example.test
+      # PUBLIC_BASE_URL: https://media.example.test
+      #
       # Optional admin UI at /admin. Setting BOTH a username and a password
       # enables it; leave them unset (as below) and no /admin route exists at
       # all. It exposes asset listing and deletion, so only enable it behind

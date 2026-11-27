@@ -6,7 +6,9 @@ export interface Config {
   apiSecret: string;
   /** Overrides the host used when building asset URLs; falls back to the incoming request's Host header. */
   publicBaseUrl: string | undefined;
+  /** When true, uploads must carry a valid signature with a current timestamp; unsigned `upload_preset` uploads are refused. */
   requireSignedUploads?: boolean;
+  /** Exact origins allowed to call the Upload API from a browser. Empty or omitted means no CORS headers are sent. */
   corsOrigins?: string[];
   // The admin fields are optional so a Config literal without them (the common
   // case, and what most tests build) is still valid — omitted means disabled.

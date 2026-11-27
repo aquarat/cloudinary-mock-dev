@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import { hasValidAdminSession, resolveJwtSecret } from "./admin/auth";
 import { isAdminEnabled, type Config } from "./config";
+import { MAX_UPLOAD_BYTES } from "./fileInput";
 import { log } from "./logger";
 import { createRateLimit } from "./middleware/rateLimit";
 import { requestId } from "./middleware/requestId";
@@ -15,6 +16,12 @@ import { createTagsRoute } from "./routes/tags";
 import { createUploadRoute } from "./routes/upload";
 import type { AssetStore } from "./store";
 
+// Ceiling on an Upload API request body. It follows MAX_UPLOAD_BYTES rather
+// than being a fixed number, so raising the upload cap is enough on its own: a
+// file sent as a base64 data URI is a third larger than its bytes, and the
+// extra MiB covers the other form fields.
+const API_BODY_LIMIT_BYTES = Math.ceil((MAX_UPLOAD_BYTES * 4) / 3) + 1024 * 1024;
+
 export function createApp(config: Config, store: AssetStore): Hono {
   const app = new Hono();
   if (config.corsOrigins?.length) {
@@ -23,12 +30,20 @@ export function createApp(config: Config, store: AssetStore): Hono {
       cors({
         origin: config.corsOrigins,
         allowMethods: ["POST", "OPTIONS"],
-        allowHeaders: ["Content-Type"],
+        // Cloudinary's browser SDKs and upload widget mark their XHRs with
+        // X-Requested-With, which makes it part of the preflight.
+        allowHeaders: ["Content-Type", "X-Requested-With"],
         maxAge: 600,
       }),
     );
   }
-  app.use("/v1_1/*", bodyLimit({ maxSize: 32 * 1024 * 1024 }));
+  app.use(
+    "/v1_1/*",
+    bodyLimit({
+      maxSize: API_BODY_LIMIT_BYTES,
+      onError: (c) => c.json({ error: { message: `Request body exceeds ${API_BODY_LIMIT_BYTES} bytes.` } }, 413),
+    }),
+  );
   app.use(async (c, next) => {
     await next();
     c.header("X-Content-Type-Options", "nosniff");
