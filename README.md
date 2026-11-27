@@ -1,11 +1,11 @@
 # cloudinary-mock-dev
 
-This app came into being after I found I need to run some tests on a large media dataset and a Cloudinary dev account wasn't going to cut it. To make matters worse, in what I feel is a dark pattern, Cloudinary allows you to exceed your quotas on a dev account and then they threaten to delete said dev account shortly thereafter - this is coercive behaviour. They also don't make it easy to clean up the account. This app was far more fun to quickly put together.
+This app came into being after I found I need to run some tests on a large media dataset and a Cloudinary dev account wasn't going to cut it. 
 
-Be warned, this app is largely vibe-coded. Some security hardening has been done, but as always, take precautions.
+This app is largely vibe-coded. Some security hardening has been done, but as always, take precautions.
 Also note that this app supports a sub-set of Cloudinary functionality - enough to be useful for me for testing. It is intended as a development aid, not a production service.
 
-And now I'll hand over to the AI README...
+And now I'll hand over to the AI agent's README:
 
 A small, self-hosted stand-in for [Cloudinary](https://cloudinary.com), intended for local development and testing. It mimics enough of Cloudinary's Upload API and delivery-URL scheme that an application using a Cloudinary SDK (e.g. the Ruby `cloudinary` gem) can be pointed at this server instead of the real service — no code changes, just configuration.
 
