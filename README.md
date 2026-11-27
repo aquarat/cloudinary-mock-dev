@@ -206,3 +206,7 @@ This server is built for local development and trusted-network use. It can be ex
 - Upload presets are not defined anywhere; any `upload_preset` value is accepted as an unsigned upload.
 - Delivery responses are sent with `Cache-Control: no-store`, and version numbers in URLs are not checked — a re-upload to the same `public_id` replaces the asset.
 - Some response fields (`asset_id`, `etag`, `version_id`) are random values, not content-derived.
+
+## License
+
+[MIT](LICENSE).
