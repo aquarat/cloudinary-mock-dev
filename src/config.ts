@@ -10,6 +10,12 @@ export interface Config {
   requireSignedUploads?: boolean;
   /** Exact origins allowed to call the Upload API from a browser. Empty or omitted means no CORS headers are sent. */
   corsOrigins?: string[];
+  /**
+   * Where a delivery request for an asset this server does not hold is
+   * redirected, in order of preference (e.g. `https://res.cloudinary.com/my-real-cloud`).
+   * Empty (the default) keeps the plain 404. See `parseFallbackUrls`.
+   */
+  deliveryFallbackUrls?: string[] | undefined;
   // The admin fields are optional so a Config literal without them (the common
   // case, and what most tests build) is still valid — omitted means disabled.
   /** Admin UI username. The admin UI only exists when this AND `adminPassword` are set. */
@@ -54,10 +60,41 @@ export function loadConfig(): Config {
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),
+    deliveryFallbackUrls: parseFallbackUrls(process.env["DELIVERY_FALLBACK_URLS"]),
     adminUsername: optionalEnv("ADMIN_USERNAME"),
     adminPassword: optionalEnv("ADMIN_PASSWORD"),
     adminJwtSecret: optionalEnv("ADMIN_JWT_SECRET"),
   };
+}
+
+/**
+ * `DELIVERY_FALLBACK_URLS` is a comma-separated list of delivery bases, each the
+ * part of a delivery URL before `/<resource_type>/<type>/...`, for instance
+ * `https://res.cloudinary.com/my-real-cloud`. Anything that is not an absolute
+ * http(s) URL is a configuration mistake, so it throws rather than being dropped
+ * silently.
+ */
+export function parseFallbackUrls(raw: string | undefined): string[] {
+  if (!raw || raw.trim() === "") return [];
+  return raw
+    .split(",")
+    .map((entry) => entry.trim().replace(/\/+$/, ""))
+    .filter((entry) => entry !== "")
+    .map((entry) => {
+      let url: URL;
+      try {
+        url = new URL(entry);
+      } catch {
+        throw new Error(`DELIVERY_FALLBACK_URLS: not a URL: ${entry}`);
+      }
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error(`DELIVERY_FALLBACK_URLS: not an http(s) URL: ${entry}`);
+      }
+      if (url.search || url.hash) {
+        throw new Error(`DELIVERY_FALLBACK_URLS: a base URL takes no query or fragment: ${entry}`);
+      }
+      return entry;
+    });
 }
 
 /**

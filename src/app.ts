@@ -81,7 +81,7 @@ export function createApp(config: Config, store: AssetStore): Hono {
   // Delivery-CDN style routes (mimics res.cloudinary.com/<cloud_name>/...).
   // Registered LAST: `/:cloudName/:resourceType/:type/*` matches any path of
   // four or more segments, so anything after it would be unreachable.
-  app.route("/", createDeliveryRoute(config.cloudName, store));
+  app.route("/", createDeliveryRoute(config.cloudName, store, { urls: config.deliveryFallbackUrls ?? [] }));
 
   return app;
 }

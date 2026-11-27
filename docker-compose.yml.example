@@ -22,6 +22,9 @@ services:
       # CORS_ORIGINS: https://app.example.test
       # PUBLIC_BASE_URL: https://media.example.test
       #
+      # Redirect delivery misses to a real cloud (see the README):
+      # DELIVERY_FALLBACK_URLS: https://res.cloudinary.com/your-real-cloud
+      #
       # Optional admin UI at /admin. Setting BOTH a username and a password
       # enables it; leave them unset (as below) and no /admin route exists at
       # all. It exposes asset listing and deletion, so only enable it behind

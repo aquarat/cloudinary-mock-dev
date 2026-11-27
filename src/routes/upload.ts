@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { randomBytes } from "node:crypto";
 import { clientIp } from "../clientIp";
 import type { Config } from "../config";
@@ -25,8 +25,7 @@ function detectResourceType(contentType: string | null): ResourceType {
 export function createUploadRoute(config: Config, store: AssetStore): Hono {
   const app = new Hono();
 
-  app.post("/v1_1/:cloudName/:resourceType{image|video|raw|auto}/upload", async (c) => {
-    const { cloudName, resourceType: requestedResourceType } = c.req.param();
+  const handleUpload = async (c: Context, cloudName: string, requestedResourceType: string) => {
     const authFailed = (reason: string) => {
       log.warn("auth_failed", {
         req_id: getRequestId(c),
@@ -176,7 +175,15 @@ export function createUploadRoute(config: Config, store: AssetStore): Hono {
     });
 
     return c.json(body, 200);
+  };
+
+  app.post("/v1_1/:cloudName/:resourceType{image|video|raw|auto}/upload", (c) => {
+    const { cloudName, resourceType } = c.req.param();
+    return handleUpload(c, cloudName, resourceType);
   });
+  // Cloudinary also takes uploads without a resource type in the path, as an
+  // image upload, and browser uploaders often post there.
+  app.post("/v1_1/:cloudName/upload", (c) => handleUpload(c, c.req.param("cloudName"), "image"));
 
   return app;
 }

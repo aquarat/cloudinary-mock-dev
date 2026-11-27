@@ -27,7 +27,12 @@ const store = await AssetStore.open(config.dataDir);
 configureLogFile(join(config.dataDir, "access.log"));
 const app = createApp(config, store);
 
-log.info("startup", { port: config.port, cloud_name: config.cloudName, data_dir: config.dataDir });
+log.info("startup", {
+  port: config.port,
+  cloud_name: config.cloudName,
+  data_dir: config.dataDir,
+  delivery_fallback: (config.deliveryFallbackUrls ?? []).join(",") || "off",
+});
 
 export default {
   port: config.port,

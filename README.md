@@ -22,6 +22,7 @@ This project is not affiliated with or endorsed by Cloudinary.
 | Endpoint | Notes |
 | --- | --- |
 | `POST /v1_1/:cloud_name/:resource_type/upload` | `resource_type` may be `image`, `video`, `raw`, or `auto` (detected from content type). Accepts multipart file uploads, remote `http(s)://` URLs, and `data:` URIs as the `file` param. Supports signed uploads (api_key + signature verification) and unsigned uploads via `upload_preset`. Honours `public_id`, `folder`, `type`, `format`, and `tags` params, and returns a Cloudinary-shaped JSON response (`public_id`, `version`, `secure_url`, dimensions, etc.). |
+| `POST /v1_1/:cloud_name/upload` | The same upload with no resource type in the path, which Cloudinary treats as an image upload. Browser uploaders that post to `api.cloudinary.com/v1_1/<cloud>/upload` use this form. |
 | `POST /v1_1/:cloud_name/:resource_type/destroy` | Signed. Deletes the asset record and its stored bytes. |
 | `POST /v1_1/:cloud_name/:resource_type/tags` | Signed. Supports the `add`, `remove`, `replace`, and `remove_all` commands (matches `Cloudinary::Uploader.*_tags`). |
 | `GET /health` | Returns `{"status": "ok"}`; used by the Docker healthcheck. |
@@ -33,6 +34,8 @@ GET /:cloud_name/:resource_type/:type/[transformations/][vN/]:public_id.:format
 ```
 
 Transformation segments (e.g. `c_fill,w_600`) and version segments (`v1234`) in the path are accepted and ignored — the originally-uploaded bytes are always served, with the correct `Content-Type` for the stored format.
+
+With `DELIVERY_FALLBACK_URLS` set, a delivery request for an asset the clone does not hold is redirected (302) to the same path under a fallback base instead of answering 404. See [Falling back to a real cloud](#falling-back-to-a-real-cloud).
 
 Upload responses build their `url`/`secure_url` against this same server, so an app that stores the returned URL will fetch assets back from the clone.
 
@@ -82,6 +85,7 @@ All configuration is via environment variables:
 | `PUBLIC_BASE_URL` | *(unset)* | Overrides the base URL used when building asset URLs in upload responses. When unset, the incoming request's `Host` header (and `X-Forwarded-Proto`) is used. |
 | `REQUIRE_SIGNED_UPLOADS` | *(unset)* | Set to `1` to refuse unsigned uploads: every upload must then carry a valid signature whose `timestamp` is within an hour of now. See [Exposed instances](#exposed-instances). |
 | `CORS_ORIGINS` | *(unset)* | Comma-separated list of exact origins (for example `https://app.example.test,https://admin.example.test`) allowed to call the Upload API from a browser. When unset, no CORS headers are sent. |
+| `DELIVERY_FALLBACK_URLS` | *(unset)* | Comma-separated delivery bases, such as `https://res.cloudinary.com/my-real-cloud`, to redirect a delivery miss to. Unset keeps the plain 404. See [Falling back to a real cloud](#falling-back-to-a-real-cloud). |
 | `MAX_UPLOAD_BYTES` | `26214400` (25 MiB) | Maximum accepted size of one file, in bytes, however it arrives (multipart, remote URL or data URI). Larger uploads are rejected. Upload API request bodies are capped at four thirds of this plus 1 MiB, which leaves room for a file of this size sent as base64. |
 | `RATE_LIMIT_MAX` | `120` | Maximum requests per client IP within `RATE_LIMIT_WINDOW_MS`; further requests get a 429. `0` disables rate limiting, which is usually what you want locally: delivery requests count too, so one image-heavy page can use up the default. Requests carrying a valid admin session are exempt — see [Admin UI](#admin-ui). |
 | `RATE_LIMIT_WINDOW_MS` | `60000` (1 minute) | Length of the rate-limiting window, in milliseconds. |
@@ -108,6 +112,23 @@ development:
 ```
 
 Because upload responses return URLs pointing back at the clone, delivery works automatically for assets whose returned `secure_url` is stored. If the app builds delivery URLs itself, point its delivery host at the clone as well (or set `PUBLIC_BASE_URL` so returned URLs use an address reachable from the browser).
+
+## Falling back to a real cloud
+
+Pointing an app at the clone changes its cloud name, so every delivery URL the app builds from a stored `public_id` names the clone's cloud, including the `public_id`s of images that were uploaded to a real cloud before the switch. Without help those all 404.
+
+`DELIVERY_FALLBACK_URLS` lists where to send them instead:
+
+```sh
+DELIVERY_FALLBACK_URLS=https://res.cloudinary.com/my-test-cloud,https://res.cloudinary.com/my-other-cloud
+```
+
+When a delivery request names an asset the clone does not hold, it answers `302` to the same path under a fallback base, keeping the transformation segments, the version and the query string. So `/<clone-cloud>/image/upload/c_fill,w_600/v12/logos/a.png` goes to `https://res.cloudinary.com/my-test-cloud/image/upload/c_fill,w_600/v12/logos/a.png`, and the real cloud applies the transformation.
+
+- **One base:** every miss goes there, and the clone makes no request of its own.
+- **Several:** every base but the last is probed in order with a `HEAD` of the same path, and the first that answers 2xx wins. The last base is used without probing when none does, so the browser gets that cloud's own 404. A probe that fails or takes more than 5 seconds counts as a miss. The outcome is remembered per path for 10 minutes.
+
+Only delivery is affected, and only requests for the clone's own cloud name. Uploads, tags and destroy never leave the clone, so nothing is ever written to a fallback cloud. Assets the clone holds are served as before. A redirect carries `Cache-Control: no-store`, so an asset uploaded to the clone later is served by the clone.
 
 ## Admin UI
 
@@ -218,6 +239,7 @@ Authentication failures are logged with the reason and client IP, never the API 
 - **Delivery is unauthenticated.** `private` and `authenticated` delivery types are accepted as path segments but behave like `upload` — anyone with the URL gets the asset. Do not expose this server publicly with sensitive content.
 - **No Admin API** (`/v1_1/.../resources`, search, etc.) — only upload, destroy, and tags. (The optional [admin UI](#admin-ui) has its own private `/admin/api` endpoints; they are not Cloudinary-compatible.)
 - Upload presets are not defined anywhere; any `upload_preset` value is accepted as an unsigned upload, unless `REQUIRE_SIGNED_UPLOADS=1`.
+- A delivery miss is a 404 unless `DELIVERY_FALLBACK_URLS` is set, in which case it is redirected (see [Falling back to a real cloud](#falling-back-to-a-real-cloud)); fallback assets are whatever the real cloud serves.
 - Delivery responses are sent with `Cache-Control: no-store`, and version numbers in URLs are not checked — a re-upload to the same `public_id` replaces the asset.
 - Some response fields (`asset_id`, `etag`, `version_id`) are random values, not content-derived.
 
